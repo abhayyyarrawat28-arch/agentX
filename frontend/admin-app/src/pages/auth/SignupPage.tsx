@@ -48,7 +48,7 @@ export default function SignupPage() {
         <div className="mb-6">
           <p className="page-kicker">System bootstrap</p>
           <h1 className="text-3xl font-extrabold tracking-[-0.05em] text-gray-900">Admin Signup</h1>
-          <p className="page-subtitle">Create the first admin account for this deployment.</p>
+          <p className="page-subtitle">Create an admin account to access the admin console.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

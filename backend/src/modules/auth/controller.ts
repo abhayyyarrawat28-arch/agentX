@@ -70,12 +70,6 @@ export async function adminSignup(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const adminCount = await User.countDocuments({ role: 'admin' });
-    if (adminCount > 0) {
-      sendError(res, 'FORBIDDEN', 'Admin signup is disabled. Contact an existing admin.', 403);
-      return;
-    }
-
     const passwordHash = await bcrypt.hash(password, 12);
     const admin = await User.create({
       employeeId: normalizedEmployeeId,
