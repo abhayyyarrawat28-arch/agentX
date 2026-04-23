@@ -72,6 +72,13 @@ export const ChangePasswordSchema = z.object({
   newPassword: z.string().min(8).max(50),
 });
 
+export const AdminSignupSchema = z.object({
+  employeeId: z.string().min(3).max(20).trim(),
+  name: z.string().min(2).max(100).trim(),
+  branchId: z.string().min(1).max(20).trim(),
+  password: z.string().min(8).max(50),
+});
+
 export const AgentRegistrationInputSchema = z.object({
   fullName: z.string().min(2).max(100).trim(),
   dateOfBirth: z.string().refine(v => !isNaN(Date.parse(v)), { message: 'Invalid date' }),

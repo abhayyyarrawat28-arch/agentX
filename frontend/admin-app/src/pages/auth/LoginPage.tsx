@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import api from '../../services/api';
 
@@ -8,7 +8,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const signupUrl = import.meta.env.VITE_SIGNUP_URL || 'http://localhost:3000/register';
   const { setAuth } = useAuthStore();
   const navigate = useNavigate();
 
@@ -40,9 +39,7 @@ export default function LoginPage() {
           <button type="submit" disabled={loading} className="btn-primary w-full">{loading ? 'Logging in...' : 'Login'}</button>
         </form>
         <div className="mt-6 text-center border-t border-gray-200 pt-5">
-          <a href={signupUrl} className="text-sm text-primary hover:underline">
-            New Agent? Sign up here
-          </a>
+          <Link to="/signup" className="text-sm text-primary hover:underline">Need an admin account? Sign up here</Link>
         </div>
       </div>
     </div>

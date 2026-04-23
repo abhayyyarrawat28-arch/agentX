@@ -59,6 +59,53 @@ export async function login(req: Request, res: Response): Promise<void> {
   }
 }
 
+export async function adminSignup(req: Request, res: Response): Promise<void> {
+  try {
+    const { employeeId, name, branchId, password } = req.body;
+    const normalizedEmployeeId = employeeId.toUpperCase();
+
+    const existingByEmployeeId = await User.findOne({ employeeId: normalizedEmployeeId });
+    if (existingByEmployeeId) {
+      sendError(res, 'EMPLOYEE_ID_TAKEN', 'Employee ID is already in use', 409);
+      return;
+    }
+
+    const adminCount = await User.countDocuments({ role: 'admin' });
+    if (adminCount > 0) {
+      sendError(res, 'FORBIDDEN', 'Admin signup is disabled. Contact an existing admin.', 403);
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const admin = await User.create({
+      employeeId: normalizedEmployeeId,
+      passwordHash,
+      role: 'admin',
+      name,
+      branchId,
+      isActive: true,
+      mustChangePassword: false,
+      onboardedBy: 'admin_created',
+    });
+
+    const token = jwt.sign(
+      { sub: admin._id.toString(), role: admin.role, branchId: admin.branchId },
+      env.jwtSecret,
+      { expiresIn: env.jwtExpiresInAdmin as any }
+    );
+
+    sendSuccess(res, {
+      token,
+      role: admin.role,
+      expiresIn: env.jwtExpiresInAdmin,
+      mustChangePassword: false,
+      user: { name: admin.name, employeeId: admin.employeeId, branchId: admin.branchId },
+    }, 201);
+  } catch (e) {
+    sendError(res, 'INTERNAL_ERROR', 'Admin signup failed', 500);
+  }
+}
+
 export async function changePassword(req: Request, res: Response): Promise<void> {
   try {
     const { currentPassword, newPassword } = req.body;

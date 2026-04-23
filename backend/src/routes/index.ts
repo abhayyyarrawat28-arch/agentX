@@ -7,7 +7,7 @@ import { validate } from '../middleware/validate';
 import { BulkSalePoliciesSchema, PolicyListQuerySchema, PolicyStatusUpdateSchema } from '../schemas/policy.schema';
 import { CreatePolicyHolderSchema, UpdatePolicyHolderSchema, CustomerListQuerySchema } from '../schemas/customer.schema';
 import { ForwardCalcSchema, ForwardCalcBulkSchema, ReverseCalcSchema, SimulationModuleSchema, SimulationModuleBulkSchema, MDRTTrackerSchema, ActivityPredictorSchema } from '../schemas/calculator.schema';
-import { CommissionConfigSchema, AgentOverviewQuerySchema, CreateUserSchema, UpdateUserSchema, LoginSchema, ChangePasswordSchema, AgentRegistrationInputSchema, RegistrationApproveSchema, RegistrationRejectSchema, LogsQuerySchema, ProductCreateSchema, ProductUpdateSchema } from '../schemas/admin.schema';
+import { CommissionConfigSchema, AgentOverviewQuerySchema, CreateUserSchema, UpdateUserSchema, LoginSchema, ChangePasswordSchema, AdminSignupSchema, AgentRegistrationInputSchema, RegistrationApproveSchema, RegistrationRejectSchema, LogsQuerySchema, ProductCreateSchema, ProductUpdateSchema } from '../schemas/admin.schema';
 
 // Controllers
 import * as authController from '../modules/auth/controller';
@@ -25,6 +25,7 @@ const router = Router();
 
 // ─── Auth ─────────────────────────────────────────────────
 router.post('/auth/login', validate(LoginSchema), authController.login);
+router.post('/auth/admin-signup', validate(AdminSignupSchema), authController.adminSignup);
 router.post('/auth/change-password', authenticate, validate(ChangePasswordSchema), authController.changePassword);
 
 // ─── Agent Self-Registration (Public) ─────────────────────
