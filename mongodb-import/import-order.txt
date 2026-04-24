@@ -1,0 +1,9 @@
+MongoDB Atlas/Compass import order:
+1) products.json       -> collection: products
+2) policyholders.json  -> collection: policyholders
+3) agentpolicies.json  -> collection: agentpolicies
+
+Important:
+- These files assume AGENT001 userId is: 69eb3b35ab55df2b4488e21b
+- If your AGENT001 _id is different, replace all occurrences of that ObjectId before import.
+- Use JSON import mode that supports Extended JSON.

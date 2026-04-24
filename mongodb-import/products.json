@@ -1,0 +1,50 @@
+[
+  {
+    "_id": { "$oid": "680000000000000000000001" },
+    "name": "Term Plan",
+    "fyCommissionRate": 0.25,
+    "renewalRates": { "year2": 0.05, "year3": 0.05, "year4": 0.04, "year5": 0.04 },
+    "isActive": true,
+    "effectiveFrom": { "$date": "2025-04-01T00:00:00.000Z" },
+    "effectiveTo": null,
+    "createdAt": { "$date": "2026-04-24T10:00:00.000Z" },
+    "updatedAt": { "$date": "2026-04-24T10:00:00.000Z" },
+    "__v": 0
+  },
+  {
+    "_id": { "$oid": "680000000000000000000002" },
+    "name": "Savings Plan",
+    "fyCommissionRate": 0.2,
+    "renewalRates": { "year2": 0.06, "year3": 0.06, "year4": 0.05, "year5": 0.05 },
+    "isActive": true,
+    "effectiveFrom": { "$date": "2025-04-01T00:00:00.000Z" },
+    "effectiveTo": null,
+    "createdAt": { "$date": "2026-04-24T10:00:00.000Z" },
+    "updatedAt": { "$date": "2026-04-24T10:00:00.000Z" },
+    "__v": 0
+  },
+  {
+    "_id": { "$oid": "680000000000000000000003" },
+    "name": "ULIP",
+    "fyCommissionRate": 0.18,
+    "renewalRates": { "year2": 0.04, "year3": 0.04, "year4": 0.03, "year5": 0.03 },
+    "isActive": true,
+    "effectiveFrom": { "$date": "2025-04-01T00:00:00.000Z" },
+    "effectiveTo": null,
+    "createdAt": { "$date": "2026-04-24T10:00:00.000Z" },
+    "updatedAt": { "$date": "2026-04-24T10:00:00.000Z" },
+    "__v": 0
+  },
+  {
+    "_id": { "$oid": "680000000000000000000004" },
+    "name": "Endowment",
+    "fyCommissionRate": 0.22,
+    "renewalRates": { "year2": 0.05, "year3": 0.05, "year4": 0.04, "year5": 0.04 },
+    "isActive": true,
+    "effectiveFrom": { "$date": "2025-04-01T00:00:00.000Z" },
+    "effectiveTo": null,
+    "createdAt": { "$date": "2026-04-24T10:00:00.000Z" },
+    "updatedAt": { "$date": "2026-04-24T10:00:00.000Z" },
+    "__v": 0
+  }
+]

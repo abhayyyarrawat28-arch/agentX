@@ -100,31 +100,31 @@ const DEFAULT_SIMULATION_CONDITIONS: SimulationConditionFormRow[] = [
     key: 'market-volatility',
     label: 'Market Volatility',
     description: 'Stress renewal outcomes when client sentiment weakens and higher-risk products face more pressure.',
-    basePersistency: 74,
-    annualBoost: -2,
-    premiumSensitivity: -2,
-    volumeSensitivity: -1,
-    productAdjustments: { termPlan: 1, savingsPlan: 2, ulip: -5, endowment: 0 },
+    basePersistency: 0.74,
+    annualBoost: -0.02,
+    premiumSensitivity: -0.02,
+    volumeSensitivity: -0.01,
+    productAdjustments: { termPlan: 0.01, savingsPlan: 0.02, ulip: -0.05, endowment: 0 },
   },
   {
     key: 'renewal-campaign',
     label: 'Renewal Campaign',
     description: 'Model stronger follow-up and reminder campaigns.',
-    basePersistency: 84,
-    annualBoost: 3,
-    premiumSensitivity: 1,
-    volumeSensitivity: 2,
-    productAdjustments: { termPlan: 1, savingsPlan: 3, ulip: 0, endowment: 2 },
+    basePersistency: 0.84,
+    annualBoost: 0.03,
+    premiumSensitivity: 0.01,
+    volumeSensitivity: 0.02,
+    productAdjustments: { termPlan: 0.01, savingsPlan: 0.03, ulip: 0, endowment: 0.02 },
   },
   {
     key: 'high-ticket-push',
     label: 'High Ticket Push',
     description: 'Stress large-premium business where follow-up quality determines the renewal lift.',
-    basePersistency: 79,
-    annualBoost: -1,
-    premiumSensitivity: 4,
-    volumeSensitivity: -2,
-    productAdjustments: { termPlan: 2, savingsPlan: 1, ulip: -1, endowment: 2 },
+    basePersistency: 0.79,
+    annualBoost: -0.01,
+    premiumSensitivity: 0.04,
+    volumeSensitivity: -0.02,
+    productAdjustments: { termPlan: 0.02, savingsPlan: 0.01, ulip: -0.01, endowment: 0.02 },
   },
 ];
 
@@ -228,6 +228,12 @@ function nearlyEqual(a?: number, b?: number) {
   return Math.abs((a ?? 0) - (b ?? 0)) < 0.000001;
 }
 
+function normalizeRatio(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  // Accept both ratio input (0.84) and percent-like input (84).
+  return Math.abs(value) > 1 ? value / 100 : value;
+}
+
 export default function CommissionConfigPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [simulationConditions, setSimulationConditions] = useState<SimulationConditionFormRow[]>(DEFAULT_SIMULATION_CONDITIONS);
@@ -287,7 +293,19 @@ export default function CommissionConfigPage() {
           maxPremium: slab.maxPremium === '' ? null : Number(slab.maxPremium),
           bonusRate: Number(slab.bonusRate) / 100,
         })),
-        simulationConditions,
+        simulationConditions: simulationConditions.map((condition) => ({
+          ...condition,
+          basePersistency: normalizeRatio(Number(condition.basePersistency)),
+          annualBoost: normalizeRatio(Number(condition.annualBoost)),
+          premiumSensitivity: normalizeRatio(Number(condition.premiumSensitivity)),
+          volumeSensitivity: normalizeRatio(Number(condition.volumeSensitivity)),
+          productAdjustments: {
+            termPlan: normalizeRatio(Number(condition.productAdjustments.termPlan)),
+            savingsPlan: normalizeRatio(Number(condition.productAdjustments.savingsPlan)),
+            ulip: normalizeRatio(Number(condition.productAdjustments.ulip)),
+            endowment: normalizeRatio(Number(condition.productAdjustments.endowment)),
+          },
+        })),
       };
 
       const productRequests: Promise<unknown>[] = [];
