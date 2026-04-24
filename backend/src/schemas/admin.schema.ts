@@ -1,10 +1,16 @@
 import { z } from 'zod';
 
+const ratio01 = z.preprocess((value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return value;
+  return Math.abs(num) > 1 ? num / 100 : num;
+}, z.number().min(0).max(1));
+
 export const CommissionConfigSchema = z.object({
   slabs: z.array(z.object({
     minPremium: z.number().min(0),
     maxPremium: z.number().positive().nullable(),
-    bonusRate: z.number().min(0).max(1),
+    bonusRate: ratio01,
   })).min(1),
   simulationConditions: z.array(z.object({
     key: z.string().min(2).max(50).trim(),
