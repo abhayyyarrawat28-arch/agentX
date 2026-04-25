@@ -3,6 +3,7 @@ import { useFieldArray, useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { queryKeys } from '../../services/queryKeys';
+import { ConfigPageSkeleton } from '../../components/ui/PageSkeletons';
 
 type ProductName = 'Term Plan' | 'Savings Plan' | 'ULIP' | 'Endowment';
 
@@ -384,7 +385,7 @@ export default function CommissionConfigPage() {
   const loading = productsLoading || configLoading;
   const saving = saveConfigMutation.isPending;
 
-  if (loading) return <div className="text-gray-500 p-6">Loading...</div>;
+  if (loading) return <ConfigPageSkeleton />;
 
   return (
     <div className="space-y-6">

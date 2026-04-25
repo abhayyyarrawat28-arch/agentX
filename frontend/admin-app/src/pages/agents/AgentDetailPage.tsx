@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { queryKeys } from '../../services/queryKeys';
+import { AgentDetailPageSkeleton } from '../../components/ui/PageSkeletons';
 
 const formatCurrency = (value?: number | null) => `₹${(value ?? 0).toLocaleString('en-IN')}`;
 const formatPercent = (value?: number | null) => `${((value ?? 0) * 100).toFixed(1)}%`;
@@ -28,7 +29,7 @@ export default function AgentDetailPage() {
     }
   }, [loading, detail, navigate]);
 
-  if (loading) return <div className="text-gray-500 p-6">Loading...</div>;
+  if (loading) return <AgentDetailPageSkeleton />;
   if (!detail?.agent) return null;
 
   const agent = detail.agent;

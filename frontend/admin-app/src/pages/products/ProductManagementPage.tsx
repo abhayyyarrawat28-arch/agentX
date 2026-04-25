@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { queryKeys } from '../../services/queryKeys';
+import { TablePageSkeleton } from '../../components/ui/PageSkeletons';
 
 type ProductFormValues = {
   name: 'Term Plan' | 'Savings Plan' | 'ULIP' | 'Endowment';
@@ -96,7 +97,7 @@ export default function ProductManagementPage() {
         </form>
       )}
 
-      {loading ? <p className="text-gray-500">Loading...</p> : (
+      {loading ? <TablePageSkeleton rows={8} cols={5} /> : (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
         <table className="w-full min-w-[52rem] table-fixed text-sm">
           <thead><tr className="bg-gray-50 border-b border-gray-200"><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th><th className="p-3 text-right text-xs font-semibold text-gray-500 uppercase">FY Commission Rate</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Renewal Trail</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Effective From</th></tr></thead>

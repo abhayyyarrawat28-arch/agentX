@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { queryKeys } from '../../services/queryKeys';
+import { TablePageSkeleton } from '../../components/ui/PageSkeletons';
 
 function formatAction(action: string) {
   return action.replace(/_/g, ' ');
@@ -50,7 +51,7 @@ export default function AuditLogsPage() {
         </div>
         <span className="data-chip">Page {page}</span>
       </section>
-      {loading ? <p className="text-gray-500">Loading...</p> : (
+      {loading ? <TablePageSkeleton rows={10} cols={5} /> : (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
           <table className="w-full table-fixed text-xs">
             <thead><tr className="bg-gray-50 border-b border-gray-200">

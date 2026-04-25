@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { queryKeys } from '../../services/queryKeys';
+import { TablePageSkeleton } from '../../components/ui/PageSkeletons';
 
 export default function UserManagementPage() {
   const queryClient = useQueryClient();
@@ -65,7 +66,7 @@ export default function UserManagementPage() {
         </form>
       )}
 
-      {loading ? <p className="text-gray-500">Loading...</p> : (
+      {loading ? <TablePageSkeleton rows={8} cols={3} /> : (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
         <table className="w-full min-w-[32rem] table-fixed text-sm">
           <thead><tr className="bg-gray-50 border-b border-gray-200"><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Employee ID</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Role</th></tr></thead>

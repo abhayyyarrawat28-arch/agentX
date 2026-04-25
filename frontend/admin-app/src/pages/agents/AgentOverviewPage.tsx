@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { queryKeys } from '../../services/queryKeys';
+import { TablePageSkeleton } from '../../components/ui/PageSkeletons';
 
 const formatPercent = (value?: number | null) => `${((value ?? 0) * 100).toFixed(1)}%`;
 
@@ -15,7 +16,7 @@ export default function AgentOverviewPage() {
     staleTime: 2 * 60 * 1000,
   });
 
-  if (loading) return <div className="text-gray-500 p-6">Loading...</div>;
+  if (loading) return <TablePageSkeleton rows={8} cols={6} />;
 
   return (
     <div className="space-y-6">

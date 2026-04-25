@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { queryKeys } from '../../services/queryKeys';
+import { TablePageSkeleton } from '../../components/ui/PageSkeletons';
 
 export default function RegistrationsPage() {
   const queryClient = useQueryClient();
@@ -66,7 +67,7 @@ export default function RegistrationsPage() {
     setPassword('');
   };
 
-  if (loading) return <div className="text-gray-500 p-6">Loading...</div>;
+  if (loading) return <TablePageSkeleton rows={8} cols={5} />;
 
   const pendingCount = registrations.filter((r: any) => r.status === 'pending').length;
 
