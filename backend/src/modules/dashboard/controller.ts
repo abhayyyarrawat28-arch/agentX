@@ -9,6 +9,7 @@ import { User } from '../user/model';
 import { sendSuccess, sendError } from '../../utils/apiResponse';
 import { startOfYear, startOfMonth, monthsAgo, getMonthAbbr } from '../../utils/dateHelpers';
 import { getCached, setCached } from '../../utils/ttlCache';
+import { logger } from '../../utils/logger';
 
 const FISCAL_MONTH_LABELS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
 const FISCAL_SEASONALITY = [0.9, 0.94, 0.98, 1.02, 1.05, 1.08, 0.97, 0.95, 0.92, 1.08, 1.14, 1.2];
@@ -167,12 +168,43 @@ function roundCurrency(value: number): number {
   return Math.round(value);
 }
 
+function shouldProfile(req: Request): boolean {
+  return req.query.profile === '1';
+}
+
+function logProfile(endpoint: string, requestId: string | undefined, totalMs: number, timings: Record<string, number>): void {
+  logger.info(`[profile] ${endpoint} ${totalMs}ms`, {
+    requestId,
+    endpoint,
+    totalMs,
+    timings,
+  });
+}
+
 export async function agentDashboard(req: Request, res: Response): Promise<void> {
   try {
+    const profileEnabled = shouldProfile(req);
+    const requestStart = Date.now();
+    const timings: Record<string, number> = {};
+    const timed = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+      const start = Date.now();
+      const result = await fn();
+      timings[name] = Date.now() - start;
+      return result;
+    };
+
     const agentId = req.user!.sub;
     const cacheKey = `agent-dashboard:${agentId}`;
+    const cacheStart = Date.now();
     const cached = getCached<any>(cacheKey);
+    timings.cacheLookup = Date.now() - cacheStart;
     if (cached) {
+      if (profileEnabled) {
+        logProfile('agentDashboard', req.requestId, Date.now() - requestStart, {
+          ...timings,
+          cacheHit: 1,
+        });
+      }
       sendSuccess(res, cached);
       return;
     }
@@ -193,24 +225,20 @@ export async function agentDashboard(req: Request, res: Response): Promise<void>
 
     const agentObjectId = new mongoose.Types.ObjectId(agentId);
 
-    const [
-      allPolicies,
-      customerCount,
-      config,
-      productRateCards,
-      customers,
-    ] = await Promise.all([
-      AgentPolicy.find({ agentId: agentObjectId, isDeleted: false })
+    const [allPolicies, customerCount, config, productRateCards, customers] = await Promise.all([
+      timed('allPoliciesQuery', () => AgentPolicy.find({ agentId: agentObjectId, isDeleted: false })
         .select('policyHolderId productName annualPremium issueDate persistencyStatus paymentFrequency')
-        .lean(),
-      PolicyHolder.countDocuments({ agentId: agentObjectId }),
-      CommissionConfig.findOne({
+        .lean()),
+      timed('customerCountQuery', () => PolicyHolder.countDocuments({ agentId: agentObjectId })),
+      timed('activeConfigQuery', () => CommissionConfig.findOne({
         effectiveFrom: { $lte: new Date() },
         $or: [{ effectiveTo: null }, { effectiveTo: { $gt: new Date() } }],
-      }).sort({ effectiveFrom: -1 }),
-      Product.find({}).sort({ name: 1, effectiveFrom: -1 }).lean(),
-      PolicyHolder.find({ agentId: agentObjectId }).lean(),
+      }).sort({ effectiveFrom: -1 })),
+      timed('productRateCardsQuery', () => Product.find({}).sort({ name: 1, effectiveFrom: -1 }).lean()),
+      timed('customersQuery', () => PolicyHolder.find({ agentId: agentObjectId }).lean()),
     ]);
+
+    const computeStart = Date.now();
 
     const typedPolicies = allPolicies as DashboardPolicy[];
     const activePolicies = typedPolicies.filter((policy) => policy.persistencyStatus === 'active');
@@ -437,7 +465,19 @@ export async function agentDashboard(req: Request, res: Response): Promise<void>
       incomeGrowth,
     };
 
+    timings.computeAndAssemble = Date.now() - computeStart;
+
+    const cacheSetStart = Date.now();
     setCached(cacheKey, payload, 45 * 1000);
+    timings.cacheSet = Date.now() - cacheSetStart;
+
+    if (profileEnabled) {
+      logProfile('agentDashboard', req.requestId, Date.now() - requestStart, {
+        ...timings,
+        cacheHit: 0,
+      });
+    }
+
     sendSuccess(res, payload);
   } catch (e) {
     sendError(res, 'INTERNAL_ERROR', 'Dashboard load failed', 500);
@@ -446,15 +486,33 @@ export async function agentDashboard(req: Request, res: Response): Promise<void>
 
 export async function adminDashboard(req: Request, res: Response): Promise<void> {
   try {
+    const profileEnabled = shouldProfile(req);
+    const requestStart = Date.now();
+    const timings: Record<string, number> = {};
+    const timed = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+      const start = Date.now();
+      const result = await fn();
+      timings[name] = Date.now() - start;
+      return result;
+    };
+
     const cacheKey = 'admin-dashboard';
+    const cacheStart = Date.now();
     const cached = getCached<any>(cacheKey);
+    timings.cacheLookup = Date.now() - cacheStart;
     if (cached) {
+      if (profileEnabled) {
+        logProfile('adminDashboard', req.requestId, Date.now() - requestStart, {
+          ...timings,
+          cacheHit: 1,
+        });
+      }
       sendSuccess(res, cached);
       return;
     }
 
     const yearStart = startOfYear();
-    const activeAgentUsers = await User.find({ role: 'agent', isActive: true }).select('name employeeId');
+    const activeAgentUsers = await timed('activeAgentsQuery', () => User.find({ role: 'agent', isActive: true }).select('name employeeId'));
     const activeAgentIds = activeAgentUsers.map(user => user._id);
 
     const [
@@ -463,7 +521,7 @@ export async function adminDashboard(req: Request, res: Response): Promise<void>
       agentPerformance,
       ytdFycResult,
     ] = await Promise.all([
-      AgentPolicy.aggregate([
+      timed('policySummaryAggregate', () => AgentPolicy.aggregate([
         { $match: { agentId: { $in: activeAgentIds }, isDeleted: false } },
         {
           $group: {
@@ -481,9 +539,9 @@ export async function adminDashboard(req: Request, res: Response): Promise<void>
             },
           },
         },
-      ]),
-      AgentRegistration.countDocuments({ status: 'pending' }),
-      AgentPolicy.aggregate([
+      ])),
+      timed('pendingRegistrationsCount', () => AgentRegistration.countDocuments({ status: 'pending' })),
+      timed('agentPerformanceAggregate', () => AgentPolicy.aggregate([
         { $match: { agentId: { $in: activeAgentIds }, isDeleted: false } },
         {
           $group: {
@@ -495,8 +553,8 @@ export async function adminDashboard(req: Request, res: Response): Promise<void>
             activePolicies: { $sum: { $cond: [{ $eq: ['$persistencyStatus', 'active'] }, 1, 0] } },
           },
         },
-      ]),
-      AgentPolicy.aggregate([
+      ])),
+      timed('ytdFycAggregate', () => AgentPolicy.aggregate([
         {
           $match: {
             agentId: { $in: activeAgentIds },
@@ -564,14 +622,15 @@ export async function adminDashboard(req: Request, res: Response): Promise<void>
             totalFyc: { $sum: '$policyFyc' },
           },
         },
-      ]),
+      ])),
     ]);
 
-    const config = await CommissionConfig.findOne({
+    const config = await timed('activeConfigQuery', () => CommissionConfig.findOne({
       effectiveFrom: { $lte: new Date() },
       $or: [{ effectiveTo: null }, { effectiveTo: { $gt: new Date() } }],
-    }).sort({ effectiveFrom: -1 });
+    }).sort({ effectiveFrom: -1 }));
 
+    const computeStart = Date.now();
     const mdrtTarget = config?.mdrtTarget || 3000000;
     const ytdPremium = policySummaryResult[0]?.ytdPremium || 0;
     const activePolicies = policySummaryResult[0]?.activePolicies || 0;
@@ -642,9 +701,216 @@ export async function adminDashboard(req: Request, res: Response): Promise<void>
       teamPersistencyTrend,
     };
 
+    timings.computeAndAssemble = Date.now() - computeStart;
+
+    const cacheSetStart = Date.now();
     setCached(cacheKey, payload, 45 * 1000);
+    timings.cacheSet = Date.now() - cacheSetStart;
+
+    if (profileEnabled) {
+      logProfile('adminDashboard', req.requestId, Date.now() - requestStart, {
+        ...timings,
+        cacheHit: 0,
+      });
+    }
+
     sendSuccess(res, payload);
   } catch (e) {
     sendError(res, 'INTERNAL_ERROR', 'Admin dashboard failed', 500);
   }
+}
+
+export async function warmAdminDashboardCache(): Promise<void> {
+  const cacheKey = 'admin-dashboard';
+  const yearStart = startOfYear();
+
+  const activeAgentUsers = await User.find({ role: 'agent', isActive: true }).select('name employeeId');
+  const activeAgentIds = activeAgentUsers.map((user) => user._id);
+
+  const [
+    policySummaryResult,
+    pendingRegistrations,
+    agentPerformance,
+    ytdFycResult,
+  ] = await Promise.all([
+    AgentPolicy.aggregate([
+      { $match: { agentId: { $in: activeAgentIds }, isDeleted: false } },
+      {
+        $group: {
+          _id: null,
+          activePolicies: { $sum: { $cond: [{ $eq: ['$persistencyStatus', 'active'] }, 1, 0] } },
+          lapsedPolicies: { $sum: { $cond: [{ $eq: ['$persistencyStatus', 'lapsed'] }, 1, 0] } },
+          ytdPremium: {
+            $sum: {
+              $cond: [
+                { $and: [{ $gte: ['$issueDate', yearStart] }, { $eq: ['$persistencyStatus', 'active'] }] },
+                '$annualPremium',
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]),
+    AgentRegistration.countDocuments({ status: 'pending' }),
+    AgentPolicy.aggregate([
+      { $match: { agentId: { $in: activeAgentIds }, isDeleted: false } },
+      {
+        $group: {
+          _id: '$agentId',
+          ytdPremium: {
+            $sum: { $cond: [{ $and: [{ $gte: ['$issueDate', yearStart] }, { $eq: ['$persistencyStatus', 'active'] }] }, '$annualPremium', 0] },
+          },
+          totalPolicies: { $sum: 1 },
+          activePolicies: { $sum: { $cond: [{ $eq: ['$persistencyStatus', 'active'] }, 1, 0] } },
+        },
+      },
+    ]),
+    AgentPolicy.aggregate([
+      {
+        $match: {
+          agentId: { $in: activeAgentIds },
+          issueDate: { $gte: yearStart },
+          persistencyStatus: 'active',
+          isDeleted: false,
+        },
+      },
+      {
+        $lookup: {
+          from: 'products',
+          let: {
+            policyProductName: '$productName',
+            policyIssueDate: '$issueDate',
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: ['$name', '$$policyProductName'],
+                },
+              },
+            },
+            {
+              $addFields: {
+                isApplicable: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $lte: ['$effectiveFrom', '$$policyIssueDate'] },
+                        {
+                          $or: [
+                            { $eq: ['$effectiveTo', null] },
+                            { $gt: ['$effectiveTo', '$$policyIssueDate'] },
+                          ],
+                        },
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+            { $sort: { isApplicable: -1, effectiveFrom: -1 } },
+            { $limit: 1 },
+            { $project: { fyCommissionRate: 1 } },
+          ],
+          as: 'rateCard',
+        },
+      },
+      {
+        $addFields: {
+          policyFyc: {
+            $multiply: [
+              '$annualPremium',
+              { $ifNull: [{ $arrayElemAt: ['$rateCard.fyCommissionRate', 0] }, 0] },
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalFyc: { $sum: '$policyFyc' },
+        },
+      },
+    ]),
+  ]);
+
+  const config = await CommissionConfig.findOne({
+    effectiveFrom: { $lte: new Date() },
+    $or: [{ effectiveTo: null }, { effectiveTo: { $gt: new Date() } }],
+  }).sort({ effectiveFrom: -1 });
+
+  const mdrtTarget = config?.mdrtTarget || 3000000;
+  const ytdPremium = policySummaryResult[0]?.ytdPremium || 0;
+  const activePolicies = policySummaryResult[0]?.activePolicies || 0;
+  const lapsedPolicies = policySummaryResult[0]?.lapsedPolicies || 0;
+  const ytdFYC = roundCurrency(ytdFycResult[0]?.totalFyc || 0);
+
+  let qualified = 0;
+  let onTrack = 0;
+  let atRisk = 0;
+  let totalPersistency = 0;
+
+  agentPerformance.forEach((agent: any) => {
+    const pct = (agent.ytdPremium / mdrtTarget) * 100;
+    if (pct >= 100) qualified++;
+    else if (pct >= 70) onTrack++;
+    else atRisk++;
+
+    if (agent.totalPolicies > 0) {
+      totalPersistency += agent.activePolicies / agent.totalPolicies;
+    }
+  });
+
+  const avgPersistency = agentPerformance.length > 0 ? totalPersistency / agentPerformance.length : 0;
+  const userMap = new Map(activeAgentUsers.map((user) => [user._id.toString(), user]));
+
+  const agentLeaderboard = agentPerformance
+    .map((agent: any) => {
+      const user = userMap.get(agent._id.toString());
+      const pct = (agent.ytdPremium / mdrtTarget) * 100;
+      return {
+        agentId: agent._id.toString(),
+        name: user?.name || 'Unknown',
+        employeeId: user?.employeeId || '—',
+        ytdPremium: agent.ytdPremium,
+        policyCount: agent.totalPolicies,
+        mdrtStatus: pct >= 100 ? 'qualified' : pct >= 70 ? 'on-track' : 'at-risk',
+      };
+    })
+    .sort((left: any, right: any) => right.ytdPremium - left.ytdPremium)
+    .slice(0, 10);
+
+  const teamPersistencyTrend = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - i);
+    teamPersistencyTrend.push({
+      month: getMonthAbbr(d),
+      teamRate: Math.round((avgPersistency * 100 + (Math.random() * 10 - 5))) / 100,
+      targetRate: config?.persistencyThreshold || 0.85,
+      industryBenchmark: 0.85,
+    });
+  }
+
+  const payload = {
+    totalAgents: activeAgentUsers.length,
+    activePolicies,
+    ytdPremium,
+    ytdFYC,
+    pendingRegistrations,
+    avgPersistency: Math.round(avgPersistency * 100) / 100,
+    mdrtQualified: qualified,
+    lapsedPolicies,
+    topAgents: agentLeaderboard,
+    totalPremium: ytdPremium,
+    mdrtOnTrack: onTrack,
+    mdrtAtRisk: atRisk,
+    agentLeaderboard,
+    teamPersistencyTrend,
+  };
+
+  setCached(cacheKey, payload, 45 * 1000);
 }

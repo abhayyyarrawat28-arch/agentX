@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
@@ -97,13 +97,13 @@ export default function Sidebar() {
   const navRef = useRef<HTMLDivElement | null>(null);
 
   const { data: pendingCount = 0 } = useQuery({
-    queryKey: queryKeys.adminRegistrationsPendingCount,
+    queryKey: queryKeys.adminDashboard,
     queryFn: async () => {
-      const res = await api.get('/admin/registrations', { params: { status: 'all', limit: 20 } });
-      const registrations = Array.isArray(res.data.data) ? res.data.data : [];
-      return registrations.filter((item: any) => item.status === 'pending').length;
+      const res = await api.get('/admin/dashboard');
+      return res.data.data;
     },
-    staleTime: 60 * 1000,
+    staleTime: 2 * 60 * 1000,
+    select: (data: any) => Number(data?.pendingRegistrations || 0),
   });
 
   useEffect(() => {

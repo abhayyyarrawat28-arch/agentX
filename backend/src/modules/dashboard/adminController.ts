@@ -7,12 +7,44 @@ import { CommissionConfig } from '../config/model';
 import { sendSuccess, sendError } from '../../utils/apiResponse';
 import { startOfYear, monthsAgo, getMonthAbbr } from '../../utils/dateHelpers';
 import { getCached, setCached, serializeQuery } from '../../utils/ttlCache';
+import { logger } from '../../utils/logger';
+
+function shouldProfile(req: Request): boolean {
+  return req.query.profile === '1';
+}
+
+function logProfile(endpoint: string, requestId: string | undefined, totalMs: number, timings: Record<string, number>): void {
+  logger.info(`[profile] ${endpoint} ${totalMs}ms`, {
+    requestId,
+    endpoint,
+    totalMs,
+    timings,
+  });
+}
 
 export async function agentOverview(req: Request, res: Response): Promise<void> {
   try {
+    const profileEnabled = shouldProfile(req);
+    const requestStart = Date.now();
+    const timings: Record<string, number> = {};
+    const timed = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+      const start = Date.now();
+      const result = await fn();
+      timings[name] = Date.now() - start;
+      return result;
+    };
+
     const cacheKey = `admin-agent-overview:${serializeQuery(req.query as Record<string, unknown>)}`;
+    const cacheStart = Date.now();
     const cached = getCached<{ data: any[]; meta: { page: number; limit: number; total: number } }>(cacheKey);
+    timings.cacheLookup = Date.now() - cacheStart;
     if (cached) {
+      if (profileEnabled) {
+        logProfile('adminAgentOverview', req.requestId, Date.now() - requestStart, {
+          ...timings,
+          cacheHit: 1,
+        });
+      }
       sendSuccess(res, cached.data, 200, cached.meta);
       return;
     }
@@ -32,10 +64,10 @@ export async function agentOverview(req: Request, res: Response): Promise<void> 
       ];
     }
 
-    const config = await CommissionConfig.findOne({
+    const config = await timed('activeConfigQuery', () => CommissionConfig.findOne({
       effectiveFrom: { $lte: new Date() },
       $or: [{ effectiveTo: null }, { effectiveTo: { $gt: new Date() } }],
-    }).sort({ effectiveFrom: -1 });
+    }).sort({ effectiveFrom: -1 }));
     const mdrtTarget = config?.mdrtTarget || 3000000;
 
     const sortFieldMap: Record<string, string> = {
@@ -186,7 +218,9 @@ export async function agentOverview(req: Request, res: Response): Promise<void> 
       },
     );
 
-    const [result] = await User.aggregate(pipeline);
+    const [result] = await timed('agentOverviewAggregate', () => User.aggregate(pipeline));
+
+    const computeStart = Date.now();
     const paginatedList = (result?.data || []).map((item: any) => ({
       ...item,
       persistencyRate: Math.round((item.persistencyRate || 0) * 100) / 100,
@@ -200,7 +234,19 @@ export async function agentOverview(req: Request, res: Response): Promise<void> 
       total,
     };
 
+    timings.computeAndAssemble = Date.now() - computeStart;
+
+    const cacheSetStart = Date.now();
     setCached(cacheKey, { data: paginatedList, meta }, 30 * 1000);
+    timings.cacheSet = Date.now() - cacheSetStart;
+
+    if (profileEnabled) {
+      logProfile('adminAgentOverview', req.requestId, Date.now() - requestStart, {
+        ...timings,
+        cacheHit: 0,
+      });
+    }
+
     sendSuccess(res, paginatedList, 200, meta);
   } catch (e) {
     sendError(res, 'INTERNAL_ERROR', 'Failed to load agent overview', 500);
@@ -209,14 +255,32 @@ export async function agentOverview(req: Request, res: Response): Promise<void> 
 
 export async function agentDetail(req: Request, res: Response): Promise<void> {
   try {
+    const profileEnabled = shouldProfile(req);
+    const requestStart = Date.now();
+    const timings: Record<string, number> = {};
+    const timed = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+      const start = Date.now();
+      const result = await fn();
+      timings[name] = Date.now() - start;
+      return result;
+    };
+
     const cacheKey = `admin-agent-detail:${req.params.id}`;
+    const cacheStart = Date.now();
     const cached = getCached<any>(cacheKey);
+    timings.cacheLookup = Date.now() - cacheStart;
     if (cached) {
+      if (profileEnabled) {
+        logProfile('adminAgentDetail', req.requestId, Date.now() - requestStart, {
+          ...timings,
+          cacheHit: 1,
+        });
+      }
       sendSuccess(res, cached);
       return;
     }
 
-    const agent = await User.findOne({ _id: req.params.id, role: 'agent' }).select('-passwordHash');
+    const agent = await timed('agentLookupQuery', () => User.findOne({ _id: req.params.id, role: 'agent' }).select('-passwordHash'));
     if (!agent) {
       sendError(res, 'NOT_FOUND', 'Agent not found', 404);
       return;
@@ -226,26 +290,27 @@ export async function agentDetail(req: Request, res: Response): Promise<void> {
     const agentId = agent._id;
 
     const [policies, customers, ytdResult, monthlyTimeline] = await Promise.all([
-      AgentPolicy.find({ agentId })
+      timed('policiesQuery', () => AgentPolicy.find({ agentId })
         .populate('policyHolderId', 'firstName lastName mobile panNumber')
-        .sort({ issueDate: -1 }),
-      PolicyHolder.find({ agentId }).sort({ createdAt: -1 }),
-      AgentPolicy.aggregate([
+        .sort({ issueDate: -1 })),
+      timed('customersQuery', () => PolicyHolder.find({ agentId }).sort({ createdAt: -1 })),
+      timed('ytdAggregate', () => AgentPolicy.aggregate([
         { $match: { agentId: new mongoose.Types.ObjectId(agentId as any), issueDate: { $gte: yearStart }, persistencyStatus: 'active', isDeleted: false } },
         { $group: { _id: null, total: { $sum: '$annualPremium' }, count: { $sum: 1 } } },
-      ]),
-      AgentPolicy.aggregate([
+      ])),
+      timed('monthlyTimelineAggregate', () => AgentPolicy.aggregate([
         { $match: { agentId: new mongoose.Types.ObjectId(agentId as any), issueDate: { $gte: monthsAgo(12) }, isDeleted: false } },
         { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$issueDate' } }, premium: { $sum: '$annualPremium' } } },
         { $sort: { _id: 1 } },
-      ]),
+      ])),
     ]);
 
-    const config = await CommissionConfig.findOne({
+    const config = await timed('activeConfigQuery', () => CommissionConfig.findOne({
       effectiveFrom: { $lte: new Date() },
       $or: [{ effectiveTo: null }, { effectiveTo: { $gt: new Date() } }],
-    }).sort({ effectiveFrom: -1 });
+    }).sort({ effectiveFrom: -1 }));
 
+    const computeStart = Date.now();
     const ytdPremium = ytdResult[0]?.total || 0;
     const policyCount = policies.length;
     const activePolicies = policies.filter(p => p.persistencyStatus === 'active').length;
@@ -275,7 +340,19 @@ export async function agentDetail(req: Request, res: Response): Promise<void> {
       monthlyTimeline: monthlyTimeline.map((r: any) => ({ month: r._id, premium: r.premium })),
     };
 
+    timings.computeAndAssemble = Date.now() - computeStart;
+
+    const cacheSetStart = Date.now();
     setCached(cacheKey, payload, 30 * 1000);
+    timings.cacheSet = Date.now() - cacheSetStart;
+
+    if (profileEnabled) {
+      logProfile('adminAgentDetail', req.requestId, Date.now() - requestStart, {
+        ...timings,
+        cacheHit: 0,
+      });
+    }
+
     sendSuccess(res, payload);
   } catch (e) {
     sendError(res, 'INTERNAL_ERROR', 'Failed to load agent detail', 500);
