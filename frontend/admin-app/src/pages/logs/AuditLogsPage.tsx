@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
+import { queryKeys } from '../../services/queryKeys';
 
 function formatAction(action: string) {
   return action.replace(/_/g, ' ');
@@ -16,17 +18,27 @@ function formatDetails(log: any) {
 }
 
 export default function AuditLogsPage() {
-  const [logs, setLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [meta, setMeta] = useState<any>({});
+  const limit = 50;
 
-  useEffect(() => {
-    setLoading(true);
-    api.get('/admin/logs', { params: { page, limit: 50 } })
-      .then(res => { setLogs(res.data.data); setMeta(res.data.meta); })
-      .finally(() => setLoading(false));
-  }, [page]);
+  const {
+    data,
+    isLoading: loading,
+  } = useQuery({
+    queryKey: queryKeys.adminLogs(page, limit),
+    queryFn: async () => {
+      const res = await api.get('/admin/logs', { params: { page, limit } });
+      const logs = Array.isArray(res.data.data) ? res.data.data : [];
+      const meta = res.data.meta || {};
+      const total = Number(meta.total || 0);
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      return { logs, meta: { ...meta, totalPages } };
+    },
+    placeholderData: keepPreviousData,
+  });
+
+  const logs = data?.logs || [];
+  const meta = data?.meta || { totalPages: 1 };
 
   return (
     <div className="space-y-6">
@@ -45,7 +57,7 @@ export default function AuditLogsPage() {
               <th className="w-40 p-3 text-left text-xs font-semibold text-gray-500 uppercase">Timestamp</th><th className="w-40 p-3 text-left text-xs font-semibold text-gray-500 uppercase">User</th><th className="w-36 p-3 text-left text-xs font-semibold text-gray-500 uppercase">Action</th><th className="w-52 p-3 text-left text-xs font-semibold text-gray-500 uppercase">Target</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Details</th>
             </tr></thead>
             <tbody>
-              {logs.map(l => (
+              {logs.map((l: any) => (
                 <tr key={l._id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="p-3 align-top"><span className="block break-words">{new Date(l.createdAt).toLocaleString()}</span></td>
                   <td className="p-3 align-top"><span className="block break-words">{formatActor(l)}</span></td>

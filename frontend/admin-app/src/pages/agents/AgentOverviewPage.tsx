@@ -1,16 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
+import { queryKeys } from '../../services/queryKeys';
 
 const formatPercent = (value?: number | null) => `${((value ?? 0) * 100).toFixed(1)}%`;
 
 export default function AgentOverviewPage() {
-  const [agents, setAgents] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.get('/admin/agents').then(res => setAgents(res.data.data)).finally(() => setLoading(false));
-  }, []);
+  const { data: agents = [], isLoading: loading } = useQuery({
+    queryKey: queryKeys.adminAgents,
+    queryFn: async () => {
+      const res = await api.get('/admin/agents');
+      return Array.isArray(res.data.data) ? res.data.data : [];
+    },
+    staleTime: 2 * 60 * 1000,
+  });
 
   if (loading) return <div className="text-gray-500 p-6">Loading...</div>;
 
@@ -30,7 +33,7 @@ export default function AgentOverviewPage() {
             <th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Employee ID</th><th className="p-3 text-right text-xs font-semibold text-gray-500 uppercase">Policies</th><th className="p-3 text-right text-xs font-semibold text-gray-500 uppercase">YTD Premium</th><th className="p-3 text-right text-xs font-semibold text-gray-500 uppercase">Persistency</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Actions</th>
           </tr></thead>
           <tbody>
-            {agents.map(a => (
+            {agents.map((a: any) => (
               <tr key={a._id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                 <td className="p-3"><span className="block break-words">{a.name || 'Unnamed agent'}</span></td>
                 <td className="p-3"><span className="block break-all">{a.employeeId}</span></td>

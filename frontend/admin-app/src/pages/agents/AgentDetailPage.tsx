@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import { queryKeys } from '../../services/queryKeys';
 
 const formatCurrency = (value?: number | null) => `₹${(value ?? 0).toLocaleString('en-IN')}`;
 const formatPercent = (value?: number | null) => `${((value ?? 0) * 100).toFixed(1)}%`;
@@ -8,13 +10,23 @@ const formatPercent = (value?: number | null) => `${((value ?? 0) * 100).toFixed
 export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [detail, setDetail] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: detail, isLoading: loading } = useQuery({
+    queryKey: queryKeys.adminAgentDetail(id || ''),
+    queryFn: async () => {
+      const res = await api.get(`/admin/agents/${id}`);
+      return res.data.data;
+    },
+    enabled: Boolean(id),
+    retry: false,
+  });
+
+  if (!id) return null;
 
   useEffect(() => {
-    if (!id) return;
-    api.get(`/admin/agents/${id}`).then(res => setDetail(res.data.data)).catch(() => navigate('/agents')).finally(() => setLoading(false));
-  }, [id, navigate]);
+    if (!loading && detail && !detail.agent) {
+      navigate('/agents');
+    }
+  }, [loading, detail, navigate]);
 
   if (loading) return <div className="text-gray-500 p-6">Loading...</div>;
   if (!detail?.agent) return null;

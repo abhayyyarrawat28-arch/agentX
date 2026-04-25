@@ -1,14 +1,34 @@
 import { useState, useEffect } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
+import { queryKeys } from '../../services/queryKeys';
 
 export default function RegistrationsPage() {
-  const [registrations, setRegistrations] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionNote, setRejectionNote] = useState('');
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [password, setPassword] = useState('');
+
+  const { data: registrations = [], isLoading: loading } = useQuery({
+    queryKey: queryKeys.adminRegistrationsList,
+    queryFn: async () => {
+      const res = await api.get('/admin/registrations');
+      return Array.isArray(res.data.data) ? res.data.data : [];
+    },
+    staleTime: 60 * 1000,
+  });
+
+  const actionMutation = useMutation({
+    mutationFn: async ({ id, action, payload }: { id: string; action: 'approve' | 'reject'; payload?: Record<string, unknown> }) => {
+      await api.post(`/admin/registrations/${id}/${action}`, payload || {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-registrations'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminDashboard });
+    },
+  });
 
   useEffect(() => {
     if (!rejectingId) return;
@@ -24,17 +44,10 @@ export default function RegistrationsPage() {
     return () => window.removeEventListener('keydown', handleEscape);
   }, [rejectingId, actionLoading]);
 
-  const load = () => {
-    setLoading(true);
-    api.get('/admin/registrations').then(res => setRegistrations(res.data.data)).finally(() => setLoading(false));
-  };
-  useEffect(load, []);
-
   const handleAction = async (id: string, action: 'approve' | 'reject', payload?: Record<string, unknown>) => {
     setActionLoading(id);
     try {
-      await api.post(`/admin/registrations/${id}/${action}`, payload || {});
-      load();
+      await actionMutation.mutateAsync({ id, action, payload });
     } catch { }
     finally { setActionLoading(null); }
   };
@@ -55,7 +68,7 @@ export default function RegistrationsPage() {
 
   if (loading) return <div className="text-gray-500 p-6">Loading...</div>;
 
-  const pendingCount = registrations.filter(r => r.status === 'pending').length;
+  const pendingCount = registrations.filter((r: any) => r.status === 'pending').length;
 
   return (
     <div className="space-y-6">
@@ -82,7 +95,7 @@ export default function RegistrationsPage() {
             </tr>
           </thead>
           <tbody>
-            {registrations.map(r => (
+            {registrations.map((r: any) => (
               <tr key={r._id} className="border-b">
                 <td className="p-3 align-top"><span className="block break-words">{r.fullName}</span></td>
                 <td className="p-3 align-top"><span className="block break-all">{r.employeeId}</span></td>

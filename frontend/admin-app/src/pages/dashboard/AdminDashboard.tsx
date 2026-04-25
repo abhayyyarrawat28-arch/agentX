@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
+import { queryKeys } from '../../services/queryKeys';
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 const formatPercent = (value?: number | null) => `${((value ?? 0) * 100).toFixed(1)}%`;
@@ -7,13 +9,15 @@ const formatPercent = (value?: number | null) => `${((value ?? 0) * 100).toFixed
 type AdminDashboardView = 'ytd' | 'liveOps';
 
 export default function AdminDashboard() {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<AdminDashboardView>('ytd');
-
-  useEffect(() => {
-    api.get('/admin/dashboard').then(res => setData(res.data.data)).finally(() => setLoading(false));
-  }, []);
+  const { data, isLoading: loading } = useQuery({
+    queryKey: queryKeys.adminDashboard,
+    queryFn: async () => {
+      const res = await api.get('/admin/dashboard');
+      return res.data.data;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
 
   if (loading) return <div className="text-gray-500 p-6">Loading...</div>;
   if (!data) return <div className="text-red-600 p-6">Failed to load dashboard</div>;

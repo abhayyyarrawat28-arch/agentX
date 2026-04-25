@@ -1,26 +1,40 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
+import { queryKeys } from '../../services/queryKeys';
 
 export default function UserManagementPage() {
-  const [users, setUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
 
   const { register, handleSubmit, reset } = useForm();
 
-  const load = () => { setLoading(true); api.get('/admin/users').then(res => setUsers(res.data.data)).finally(() => setLoading(false)); };
-  useEffect(load, []);
+  const { data: users = [], isLoading: loading } = useQuery({
+    queryKey: queryKeys.adminUsers,
+    queryFn: async () => {
+      const res = await api.get('/admin/users');
+      return Array.isArray(res.data.data) ? res.data.data : [];
+    },
+    staleTime: 60 * 1000,
+  });
+
+  const createUserMutation = useMutation({
+    mutationFn: async (data: any) => {
+      await api.post('/admin/users', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminUsers });
+    },
+  });
 
   const onSubmit = async (data: any) => {
-    setFormLoading(true); setError('');
+    setError('');
     try {
-      await api.post('/admin/users', data);
-      reset(); setShowForm(false); load();
+      await createUserMutation.mutateAsync(data);
+      reset(); setShowForm(false);
     } catch (err: any) { setError(err.response?.data?.error?.message || 'Failed'); }
-    finally { setFormLoading(false); }
   };
 
   return (
@@ -47,7 +61,7 @@ export default function UserManagementPage() {
             <select {...register('role')} className="input-field w-full"><option value="agent">Agent</option><option value="admin">Admin</option></select>
           </div>
           {error && <p className="text-error text-sm col-span-2">{error}</p>}
-          <div className="col-span-2"><button type="submit" disabled={formLoading} className="btn-primary">{formLoading ? 'Creating...' : 'Create User'}</button></div>
+          <div className="col-span-2"><button type="submit" disabled={createUserMutation.isPending} className="btn-primary">{createUserMutation.isPending ? 'Creating...' : 'Create User'}</button></div>
         </form>
       )}
 
@@ -56,7 +70,7 @@ export default function UserManagementPage() {
         <table className="w-full min-w-[32rem] table-fixed text-sm">
           <thead><tr className="bg-gray-50 border-b border-gray-200"><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Employee ID</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Role</th></tr></thead>
           <tbody>
-            {users.map(u => (
+            {users.map((u: any) => (
               <tr key={u._id} className="border-b"><td className="p-3"><span className="block break-words">{u.name}</span></td><td className="p-3"><span className="block break-all">{u.employeeId}</span></td><td className="p-3 capitalize">{u.role}</td></tr>
             ))}
             {users.length === 0 && <tr><td colSpan={3} className="p-8 text-center text-gray-400">No users found</td></tr>}

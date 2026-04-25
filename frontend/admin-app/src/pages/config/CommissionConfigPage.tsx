@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
+import { queryKeys } from '../../services/queryKeys';
 
 type ProductName = 'Term Plan' | 'Savings Plan' | 'ULIP' | 'Endowment';
 
@@ -240,10 +242,8 @@ function toNumberOr(value: unknown, fallback: number) {
 }
 
 export default function CommissionConfigPage() {
-  const [products, setProducts] = useState<any[]>([]);
+  const queryClient = useQueryClient();
   const [simulationConditions, setSimulationConditions] = useState<SimulationConditionFormRow[]>(DEFAULT_SIMULATION_CONDITIONS);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
   const { control, register, handleSubmit, reset, watch } = useForm<CommissionConfigFormValues>({
@@ -259,36 +259,26 @@ export default function CommissionConfigPage() {
   const slabFields = useFieldArray({ control, name: 'slabs' });
   const planSchedules = watch('productSchedules');
 
-  const loadData = async (withSpinner = true) => {
-    if (withSpinner) setLoading(true);
-    try {
-      const [configResponse, productsResponse] = await Promise.all([
-        api.get('/admin/configs'),
-        api.get('/products'),
-      ]);
+  const { data: products = [], isLoading: productsLoading } = useQuery({
+    queryKey: queryKeys.products,
+    queryFn: async () => {
+      const productsResponse = await api.get('/products');
+      return Array.isArray(productsResponse.data.data) ? productsResponse.data.data : [];
+    },
+    staleTime: 2 * 60 * 1000,
+  });
 
-      const nextConfig = Array.isArray(configResponse.data.data) ? configResponse.data.data[0] : configResponse.data.data;
-      const nextProducts = Array.isArray(productsResponse.data.data) ? productsResponse.data.data : [];
+  const { data: configData, isLoading: configLoading } = useQuery({
+    queryKey: queryKeys.adminConfigs,
+    queryFn: async () => {
+      const configResponse = await api.get('/admin/configs');
+      return Array.isArray(configResponse.data.data) ? configResponse.data.data[0] : configResponse.data.data;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
 
-      setProducts(nextProducts);
-      setSimulationConditions(Array.isArray(nextConfig?.simulationConditions) && nextConfig.simulationConditions.length > 0
-        ? nextConfig.simulationConditions
-        : DEFAULT_SIMULATION_CONDITIONS);
-      reset(mapConfigToForm(nextConfig, nextProducts));
-    } finally {
-      if (withSpinner) setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const onSubmit = async (data: CommissionConfigFormValues) => {
-    setSaving(true);
-    setMessage('');
-
-    try {
+  const saveConfigMutation = useMutation({
+    mutationFn: async (data: CommissionConfigFormValues) => {
       const configPayload = {
         persistencyThreshold: normalizeRatio(toNumberOr(data.persistencyThreshold, 85)),
         mdrtTarget: Math.max(1, toNumberOr(data.mdrtTarget, 3000000)),
@@ -316,8 +306,8 @@ export default function CommissionConfigPage() {
       const productRequests: Promise<unknown>[] = [];
 
       for (const schedule of data.productSchedules) {
-        const existing = products.find((product) => product._id === schedule.id)
-          ?? products.find((product) => product.name === schedule.name);
+        const existing = products.find((product: any) => product._id === schedule.id)
+          ?? products.find((product: any) => product.name === schedule.name);
 
         const productPayload = {
           fyCommissionRate: Number(schedule.fyCommissionRate) / 100,
@@ -356,9 +346,29 @@ export default function CommissionConfigPage() {
         api.put('/admin/configs', configPayload),
         ...productRequests,
       ]);
-
-      await loadData(false);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.adminConfigs }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.products }),
+      ]);
       setMessage('Commission architecture saved successfully');
+    },
+  });
+
+  useEffect(() => {
+    if (!configData) return;
+    setSimulationConditions(Array.isArray(configData?.simulationConditions) && configData.simulationConditions.length > 0
+      ? configData.simulationConditions
+      : DEFAULT_SIMULATION_CONDITIONS);
+    reset(mapConfigToForm(configData, products));
+  }, [configData, products, reset]);
+
+  const onSubmit = async (data: CommissionConfigFormValues) => {
+    setMessage('');
+
+    try {
+      await saveConfigMutation.mutateAsync(data);
     } catch (err: any) {
       const apiError = err?.response?.data?.error;
       const details = apiError?.details && typeof apiError.details === 'object'
@@ -368,10 +378,11 @@ export default function CommissionConfigPage() {
         : '';
 
       setMessage(details ? `Validation failed - ${details}` : (apiError?.message || 'Failed to save commission architecture'));
-    } finally {
-      setSaving(false);
     }
   };
+
+  const loading = productsLoading || configLoading;
+  const saving = saveConfigMutation.isPending;
 
   if (loading) return <div className="text-gray-500 p-6">Loading...</div>;
 

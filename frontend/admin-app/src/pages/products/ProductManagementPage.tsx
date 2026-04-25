@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
+import { queryKeys } from '../../services/queryKeys';
 
 type ProductFormValues = {
   name: 'Term Plan' | 'Savings Plan' | 'ULIP' | 'Endowment';
@@ -13,10 +15,8 @@ type ProductFormValues = {
 };
 
 export default function ProductManagementPage() {
-  const [products, setProducts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
   const { register, handleSubmit, reset } = useForm<ProductFormValues>({
     defaultValues: {
@@ -30,13 +30,28 @@ export default function ProductManagementPage() {
     },
   });
 
-  const load = () => { setLoading(true); api.get('/products').then(res => setProducts(res.data.data)).finally(() => setLoading(false)); };
-  useEffect(load, []);
+  const { data: products = [], isLoading: loading } = useQuery({
+    queryKey: queryKeys.products,
+    queryFn: async () => {
+      const res = await api.get('/products');
+      return Array.isArray(res.data.data) ? res.data.data : [];
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const createProductMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      await api.post('/products', payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products });
+    },
+  });
 
   const onSubmit = async (data: ProductFormValues) => {
-    setFormLoading(true); setError('');
+    setError('');
     try {
-      await api.post('/products', {
+      await createProductMutation.mutateAsync({
         name: data.name,
         fyCommissionRate: Number(data.fyCommissionRate) / 100,
         renewalRates: {
@@ -48,9 +63,8 @@ export default function ProductManagementPage() {
         effectiveFrom: new Date(data.effectiveFrom).toISOString(),
         isActive: true,
       });
-      reset(); setShowForm(false); load();
+      reset(); setShowForm(false);
     } catch (err: any) { setError(err.response?.data?.error?.message || 'Failed'); }
-    finally { setFormLoading(false); }
   };
 
   return (
@@ -78,7 +92,7 @@ export default function ProductManagementPage() {
           <div><label className="block text-sm font-medium mb-1">Renewal Year 4 (%)</label><input type="number" step="0.1" {...register('renewalYear4', { valueAsNumber: true })} className="input-field w-full" required /></div>
           <div><label className="block text-sm font-medium mb-1">Renewal Year 5 (%)</label><input type="number" step="0.1" {...register('renewalYear5', { valueAsNumber: true })} className="input-field w-full" required /></div>
           {error && <p className="text-error text-sm xl:col-span-3 md:col-span-2">{error}</p>}
-          <div className="xl:col-span-3 md:col-span-2"><button type="submit" disabled={formLoading} className="btn-primary">{formLoading ? 'Creating...' : 'Create Product'}</button></div>
+          <div className="xl:col-span-3 md:col-span-2"><button type="submit" disabled={createProductMutation.isPending} className="btn-primary">{createProductMutation.isPending ? 'Creating...' : 'Create Product'}</button></div>
         </form>
       )}
 
@@ -87,7 +101,7 @@ export default function ProductManagementPage() {
         <table className="w-full min-w-[52rem] table-fixed text-sm">
           <thead><tr className="bg-gray-50 border-b border-gray-200"><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th><th className="p-3 text-right text-xs font-semibold text-gray-500 uppercase">FY Commission Rate</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Renewal Trail</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th><th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase">Effective From</th></tr></thead>
           <tbody>
-            {products.map(p => (
+            {products.map((p: any) => (
               <tr key={p._id} className="border-b"><td className="p-3"><span className="block break-words">{p.name}</span></td><td className="p-3 text-right">{((p.fyCommissionRate || 0) * 100).toFixed(1)}%</td><td className="p-3"><span className="block break-words">Y2 {((p.renewalRates?.year2 || 0) * 100).toFixed(1)}% · Y3 {((p.renewalRates?.year3 || 0) * 100).toFixed(1)}% · Y4 {((p.renewalRates?.year4 || 0) * 100).toFixed(1)}% · Y5 {((p.renewalRates?.year5 || 0) * 100).toFixed(1)}%</span></td><td className="p-3 capitalize">{p.isActive ? 'active' : 'inactive'}</td><td className="p-3">{p.effectiveFrom ? new Date(p.effectiveFrom).toLocaleDateString('en-IN') : '—'}</td></tr>
             ))}
           </tbody>

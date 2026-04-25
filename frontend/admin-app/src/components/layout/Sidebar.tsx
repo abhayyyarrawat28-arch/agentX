@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
+import { queryKeys } from '../../services/queryKeys';
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -92,17 +94,17 @@ function NavIcon({ name }: { name: string }) {
 
 export default function Sidebar() {
   const location = useLocation();
-  const [pendingCount, setPendingCount] = useState(0);
   const navRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    api.get('/admin/registrations')
-      .then(res => {
-        const registrations = Array.isArray(res.data.data) ? res.data.data : [];
-        setPendingCount(registrations.filter((item: any) => item.status === 'pending').length);
-      })
-      .catch(() => setPendingCount(0));
-  }, [location.pathname]);
+  const { data: pendingCount = 0 } = useQuery({
+    queryKey: queryKeys.adminRegistrationsPendingCount,
+    queryFn: async () => {
+      const res = await api.get('/admin/registrations', { params: { status: 'all', limit: 20 } });
+      const registrations = Array.isArray(res.data.data) ? res.data.data : [];
+      return registrations.filter((item: any) => item.status === 'pending').length;
+    },
+    staleTime: 60 * 1000,
+  });
 
   useEffect(() => {
     const activeTab = navRef.current?.querySelector('.management-tab-active');
